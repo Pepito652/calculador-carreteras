@@ -2599,6 +2599,7 @@ function toggleGPS() {
         hasInitialGpsReorder = false;
         btn.classList.remove('active');
         releaseWakeLock(); // Permitir que la pantalla se apague al apagar el GPS
+        showPreciseLocationHelper(false); // Limpiar ayuda si estuviera abierta
     } else {
         // Activar GPS
         state.gpsActive = true;
@@ -2647,6 +2648,19 @@ function toggleGPS() {
 function onLocationFound(e) {
     const radius = e.accuracy;
     state.userLocation = e.latlng;
+
+    // Si la precisión es baja (mayor a 300m), contamos lecturas
+    if (radius > 300) {
+        if (!state.badGpsCount) state.badGpsCount = 0;
+        state.badGpsCount++;
+        // Si tras 3 lecturas continuadas (~3 seg) la precisión sigue siendo mala, mostramos la tarjeta tutorial
+        if (state.badGpsCount >= 3) {
+            showPreciseLocationHelper(true);
+        }
+    } else {
+        state.badGpsCount = 0;
+        showPreciseLocationHelper(false); // Ocultar si la señal vuelve a ser precisa
+    }
 
     // Crear o mover el marcador GPS
     if (gpsMarker) {
@@ -2705,6 +2719,76 @@ function onLocationError(e) {
     logDebug('Error de GPS: ' + e.message, 'error');
     appAlert('No se pudo acceder a la geolocalización. Si has denegado el permiso, pulsa en el candado de la barra de direcciones de tu navegador y cámbialo a "Permitir".', 'error');
     toggleGPS(); // Desactivar
+}
+
+// Mostrar u ocultar la tarjeta tutorial para activar Ubicación Precisa en Chrome
+function showPreciseLocationHelper(show) {
+    let helper = document.getElementById('gps-precise-helper');
+    if (show) {
+        if (!helper) {
+            helper = document.createElement('div');
+            helper.id = 'gps-precise-helper';
+            helper.style.cssText = `
+                position: absolute;
+                bottom: 24px;
+                left: 50%;
+                transform: translateX(-50%) translateY(0);
+                width: 90%;
+                max-width: 400px;
+                background: rgba(9, 9, 11, 0.95);
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+                color: #f4f4f5;
+                padding: 20px;
+                border-radius: 20px;
+                font-family: 'Outfit', sans-serif;
+                z-index: 10000;
+                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+                border: 1px solid rgba(239, 68, 68, 0.3);
+                transition: opacity 0.3s ease, transform 0.3s ease;
+            `;
+            helper.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <div class="gps-pulse-dot-red"></div>
+                    <strong style="font-size: 1rem; color: #fecaca; font-family: 'Outfit', sans-serif;">Ubicación Precisa Requerida</strong>
+                </div>
+                <p style="font-size: 0.85rem; line-height: 1.5; color: #cbd5e1; margin: 0 0 15px 0;">
+                    Se ha detectado ubicación aproximada. Para guiarte correctamente en el tractor, activa la precisión alta en tu móvil:
+                </p>
+                <ol style="font-size: 0.8rem; line-height: 1.6; color: #cbd5e1; padding-left: 20px; margin: 0 0 15px 0;">
+                    <li>Abre los <strong>Ajustes</strong> de tu móvil.</li>
+                    <li>Ve a <strong>Aplicaciones</strong> y selecciona <strong>Chrome</strong>.</li>
+                    <li>Entra en <strong>Permisos</strong> &gt; <strong>Ubicación</strong>.</li>
+                    <li>Activa la opción <strong>"Usar ubicación precisa"</strong>.</li>
+                </ol>
+                <button onclick="showPreciseLocationHelper(false)" style="
+                    width: 100%;
+                    background: #10b981;
+                    color: white;
+                    border: none;
+                    padding: 10px;
+                    border-radius: 10px;
+                    font-weight: 600;
+                    font-size: 0.85rem;
+                    cursor: pointer;
+                    font-family: 'Outfit', sans-serif;
+                ">Entendido</button>
+            `;
+            document.body.appendChild(helper);
+        }
+        helper.style.opacity = '1';
+        helper.style.transform = 'translateX(-50%) translateY(0)';
+    } else {
+        if (helper) {
+            helper.style.opacity = '0';
+            helper.style.transform = 'translateX(-50%) translateY(20px)';
+            setTimeout(() => {
+                if (helper && helper.style.opacity === '0') {
+                    helper.remove();
+                }
+            }, 300);
+        }
+    }
 }
 
 

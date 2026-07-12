@@ -1,4 +1,4 @@
-const CACHE_NAME = 'road-clearing-v44';
+const CACHE_NAME = 'road-clearing-v45';
 const ASSETS = [
   './',
   './index.html',
