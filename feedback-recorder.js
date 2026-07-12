@@ -39,44 +39,47 @@
     styleEl.innerHTML = `
         .feedback-mic-btn {
             position: fixed;
-            bottom: 25px;
-            left: 25px;
-            width: 54px;
-            height: 54px;
+            top: 15px;
+            right: 15px;
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
-            background-color: #ef4444;
-            color: white;
-            border: 2px solid white;
-            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+            background-color: #27272a;
+            color: #ef4444; /* Icono rojo sutil para indicar función de micro */
+            border: 1px solid #3f3f46;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
             cursor: pointer;
-            z-index: 1000;
+            z-index: 1100;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .feedback-mic-btn:hover {
-            transform: scale(1.08);
-            background-color: #dc2626;
+            transform: scale(1.05);
+            background-color: #3f3f46;
+            color: #fca5a5;
         }
         .feedback-mic-btn.recording {
-            background-color: #b91c1c;
+            background-color: #ef4444 !important;
+            color: white !important;
             animation: pulse-red-mic 1.2s infinite;
             border-color: #fca5a5;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
         }
         .feedback-list-btn {
             position: fixed;
-            bottom: 25px;
-            left: 88px;
-            width: 40px;
-            height: 40px;
+            top: 15px;
+            right: 75px;
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
             background-color: #27272a;
             color: #d4d4d8;
             border: 1px solid #3f3f46;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
             cursor: pointer;
-            z-index: 1000;
+            z-index: 1100;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -85,6 +88,7 @@
         .feedback-list-btn:hover {
             background-color: #3f3f46;
             color: #ffffff;
+            transform: scale(1.05);
         }
         @keyframes pulse-red-mic {
             0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
@@ -95,8 +99,8 @@
         /* Panel de notas guardadas */
         .feedback-panel {
             position: fixed;
-            bottom: 90px;
-            left: 25px;
+            top: 75px;
+            right: 15px;
             width: 320px;
             max-height: 400px;
             background: rgba(9, 9, 11, 0.95);
@@ -105,7 +109,7 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 16px;
             box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5);
-            z-index: 1000;
+            z-index: 1100;
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -113,7 +117,7 @@
             color: #f4f4f5;
             transition: all 0.3s ease;
             opacity: 0;
-            transform: translateY(20px) scale(0.95);
+            transform: translateY(-20px) scale(0.95);
             pointer-events: none;
         }
         .feedback-panel.active {
