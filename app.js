@@ -3287,10 +3287,34 @@ function getClosestPointOnSegment(p, a, b) {
 }
 
 // Iniciar el modo de trabajo activo para un tramo
-function startActiveWorkMode(tramoId) {
+async function startActiveWorkMode(tramoId, skipDistanceCheck = false) {
     try {
         const tramo = state.tramos.find(t => t.id === tramoId);
         if (!tramo) return;
+
+        // Forzar activación del GPS si estuviera apagado
+        if (!state.gpsActive) {
+            toggleGPS();
+        }
+
+        // Si tenemos la ubicación del GPS y no omitimos el control, verificar si estamos demasiado lejos (> 50 metros)
+        if (!skipDistanceCheck && state.userLocation) {
+            const proj = projectLatLngToPolyline(state.userLocation.lat, state.userLocation.lng, tramo.coordinates);
+            if (proj.distance > 50) {
+                const startPt = tramo.coordinates[0];
+                const action = await appGpsDistanceDialog(proj.distance, startPt);
+                
+                if (action === 'cancel') {
+                    return; // Cancelar inicio
+                } else if (action === 'maps') {
+                    // Abrir Google Maps en pestaña nueva para navegar al inicio del tramo
+                    const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${startPt[0]},${startPt[1]}`;
+                    window.open(mapsUrl, '_blank');
+                    return;
+                }
+                // Si la acción es 'confirm', continúa normalmente
+            }
+        }
 
         // Ocultar popup de Leaflet
         map.closePopup();
@@ -3324,11 +3348,6 @@ function startActiveWorkMode(tramoId) {
         // Mostrar Banner de Trabajo
         document.getElementById('activeWorkBanner').style.display = 'flex';
         document.getElementById('nearbySuggestionBanner').style.display = 'none';
-
-        // Forzar activación del GPS si estuviera apagado
-        if (!state.gpsActive) {
-            toggleGPS();
-        }
 
         logDebug(`Modo de Trabajo Activo iniciado para '${tramo.name}'.`);
     } catch (e) {
@@ -3440,7 +3459,7 @@ async function completeActiveWorkPass() {
             const oppositeMargin = margin === 'right' ? 'Izquierdo' : 'Derecho';
             const goBack = await appConfirm(`Pasada finalizada. ¿Deseas iniciar la pasada de vuelta para desbrozar el Margen ${oppositeMargin}?`, 'Siguiente Pasada');
             if (goBack) {
-                startActiveWorkMode(tramoId);
+                startActiveWorkMode(tramoId, true);
                 setActiveWorkMargin(margin === 'right' ? 'left' : 'right');
             }
         }
@@ -3659,6 +3678,66 @@ function appConfirm(message, title = '¿Estás seguro?', isDanger = false) {
             setTimeout(() => {
                 modal.remove();
                 resolve(false);
+            }, 200);
+        };
+    });
+}
+
+// Diálogo de advertencia de distancia GPS con opción de Google Maps
+function appGpsDistanceDialog(distanceMeters, startLatLng) {
+    return new Promise((resolve) => {
+        const modal = document.createElement('div');
+        modal.className = 'custom-dialog-overlay';
+        
+        modal.innerHTML = `
+            <div class="custom-dialog-card animate-scale-up" style="max-width: 380px;">
+                <div class="dialog-icon-container" style="color: var(--warning); margin-bottom: 12px;">
+                    <i data-lucide="navigation"></i>
+                </div>
+                <div class="dialog-content" style="text-align: center; margin-bottom: 16px;">
+                    <h3 class="dialog-title" style="margin: 0 0 8px 0; font-family: 'Outfit', sans-serif; font-size: 1.1rem; color: #fecaca;">Estás lejos de la carretera</h3>
+                    <p class="dialog-message" style="margin: 0; font-family: 'Outfit', sans-serif; font-size: 0.85rem; line-height: 1.5; color: #cbd5e1;">
+                        Tu GPS se encuentra a <strong>${Math.round(distanceMeters)} metros</strong> de la carretera seleccionada. ¿Qué deseas hacer?
+                    </p>
+                </div>
+                <div class="dialog-actions" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                    <button class="btn btn-primary btn-dialog-maps" style="width: 100%; background-color: #3b82f6; border-color: #3b82f6; font-family: 'Outfit', sans-serif; font-weight: 600; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; color: white;">
+                        <i data-lucide="map" style="width: 16px; height: 16px;"></i> Ir con Google Maps
+                    </button>
+                    <button class="btn btn-secondary btn-dialog-confirm" style="width: 100%; background-color: #f59e0b; border-color: #f59e0b; color: white; font-family: 'Outfit', sans-serif; font-weight: 600; padding: 10px; cursor: pointer;">
+                        Comenzar de todos modos
+                    </button>
+                    <button class="btn btn-secondary btn-dialog-cancel" style="width: 100%; font-family: 'Outfit', sans-serif; padding: 10px; cursor: pointer;">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        if (window.refreshLucideIcons) refreshLucideIcons();
+        
+        modal.querySelector('.btn-dialog-maps').onclick = () => {
+            modal.classList.add('fade-out');
+            setTimeout(() => {
+                modal.remove();
+                resolve('maps');
+            }, 200);
+        };
+        
+        modal.querySelector('.btn-dialog-confirm').onclick = () => {
+            modal.classList.add('fade-out');
+            setTimeout(() => {
+                modal.remove();
+                resolve('confirm');
+            }, 200);
+        };
+        
+        modal.querySelector('.btn-dialog-cancel').onclick = () => {
+            modal.classList.add('fade-out');
+            setTimeout(() => {
+                modal.remove();
+                resolve('cancel');
             }, 200);
         };
     });
