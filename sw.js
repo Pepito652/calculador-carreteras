@@ -1,9 +1,10 @@
-const CACHE_NAME = 'road-clearing-v52';
+const CACHE_NAME = 'road-clearing-v53';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './feedback-recorder.js',
   './libs/leaflet.css',
   './libs/leaflet.js',
   './libs/leaflet-rotate.js',
