@@ -1364,6 +1364,69 @@ function getSortedPendingTramos() {
     return sorted;
 }
 
+// Reordenar secuencia de trabajo usando el algoritmo del vecino más cercano (Nearest Neighbor) desde el GPS
+function reorderRouteFromLocation(userLatLng) {
+    try {
+        if (!state.tramos || state.tramos.length === 0) return;
+
+        // Separar IDs de tramos completados y pendientes
+        const completedIds = state.routeOrder.filter(id => {
+            const tramo = state.tramos.find(t => t.id === id);
+            return tramo && tramo.status === 'completed';
+        });
+        
+        const pendingTramos = state.tramos.filter(t => t.status !== 'completed');
+        if (pendingTramos.length === 0) return;
+
+        // Vecino más cercano partiendo de la posición GPS actual
+        const newPendingIds = [];
+        let currentPt = [userLatLng.lat, userLatLng.lng];
+        const remaining = [...pendingTramos];
+
+        while (remaining.length > 0) {
+            let closestIdx = -1;
+            let minD = Infinity;
+
+            for (let i = 0; i < remaining.length; i++) {
+                const tramo = remaining[i];
+                const startPt = tramo.coordinates[0];
+                const endPt = tramo.coordinates[tramo.coordinates.length - 1];
+                
+                const dStart = getHaversineDistance(currentPt[0], currentPt[1], startPt[0], startPt[1]);
+                const dEnd = getHaversineDistance(currentPt[0], currentPt[1], endPt[0], endPt[1]);
+                const d = Math.min(dStart, dEnd);
+
+                if (d < minD) {
+                    minD = d;
+                    closestIdx = i;
+                }
+            }
+
+            if (closestIdx !== -1) {
+                const closestTramo = remaining.splice(closestIdx, 1)[0];
+                newPendingIds.push(closestTramo.id);
+                // Actualizar currentPt al extremo opuesto por el que se sale del tramo
+                const startPt = closestTramo.coordinates[0];
+                const endPt = closestTramo.coordinates[closestTramo.coordinates.length - 1];
+                const dStart = getHaversineDistance(currentPt[0], currentPt[1], startPt[0], startPt[1]);
+                const dEnd = getHaversineDistance(currentPt[0], currentPt[1], endPt[0], endPt[1]);
+                currentPt = dStart < dEnd ? endPt : startPt;
+            } else {
+                break;
+            }
+        }
+
+        // Combinar pendientes ordenados con completados al final
+        state.routeOrder = [...newPendingIds, ...completedIds];
+        
+        updateRouteList();
+        saveStateToLocalStorage();
+        logDebug("Secuencia de trabajo ordenada por proximidad al GPS con éxito.");
+    } catch (e) {
+        console.error("Error al reordenar ruta por GPS:", e);
+    }
+}
+
 // Renderizar Tab 2: Lista de planificación secuencial (solo muestra tramos pendientes)
 function updateRouteList() {
     const container = document.getElementById('routeList');
