@@ -2562,6 +2562,7 @@ function toggleGPS() {
         state.userLocation = null;
         hasInitialGpsReorder = false;
         btn.classList.remove('active');
+        showGpsAccuracyWarning(false); // Ocultar aviso de precisión de inmediato
     } else {
         // Activar GPS
         state.gpsActive = true;
@@ -2674,33 +2675,47 @@ function showGpsAccuracyWarning(show, radius = 0) {
             warningBanner.id = 'gps-accuracy-warning';
             warningBanner.style.cssText = `
                 position: absolute;
-                top: 80px;
+                top: 24px;
                 left: 50%;
-                transform: translateX(-50%);
-                background: rgba(239, 68, 68, 0.95);
-                color: white;
-                padding: 10px 18px;
-                border-radius: 30px;
+                transform: translateX(-50%) translateY(0);
+                background: rgba(9, 9, 11, 0.85);
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+                color: #f4f4f5;
+                padding: 10px 20px;
+                border-radius: 16px;
                 font-family: 'Outfit', sans-serif;
                 font-size: 0.8rem;
-                font-weight: 600;
+                font-weight: 500;
                 z-index: 9999;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: 10px;
                 pointer-events: none;
                 transition: opacity 0.3s ease, transform 0.3s ease;
-                border: 1px solid rgba(255,255,255,0.2);
+                border: 1px solid rgba(239, 68, 68, 0.3);
             `;
-            warningBanner.innerHTML = `⚠️ Buscando señal GPS precisa...`;
             document.body.appendChild(warningBanner);
         }
-        warningBanner.innerHTML = `⚠️ Señal GPS débil: precisión de ${Math.round(radius)}m (se requiere <300m)`;
+        
+        // Determinar el color y texto según la calidad (aproximada > 1000m / débil < 1000m)
+        const isCoarse = radius >= 1000;
+        const pulseClass = isCoarse ? 'gps-pulse-dot-red' : 'gps-pulse-dot-orange';
+        const statusText = isCoarse 
+            ? `Ubicación aproximada: <strong>${Math.round(radius)}m</strong> (activa 'Ubicación Precisa' en tu móvil)` 
+            : `Señal GPS débil: precisión de <strong>${Math.round(radius)}m</strong> (se requiere <300m)`;
+
+        warningBanner.innerHTML = `
+            <div class="${pulseClass}"></div>
+            <span style="letter-spacing: 0.02em;">${statusText}</span>
+        `;
         warningBanner.style.opacity = '1';
+        warningBanner.style.transform = 'translateX(-50%) translateY(0)';
     } else {
         if (warningBanner) {
             warningBanner.style.opacity = '0';
+            warningBanner.style.transform = 'translateX(-50%) translateY(-10px)';
             setTimeout(() => {
                 if (warningBanner && warningBanner.style.opacity === '0') {
                     warningBanner.remove();
