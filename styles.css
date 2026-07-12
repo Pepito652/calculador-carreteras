@@ -768,10 +768,9 @@ body, html {
     background-color: var(--accent);
     color: white;
     border-color: var(--accent);
-    position: relative;
 }
 
-.gps-btn.active::after {
+.gps-btn.active.searching::after {
     content: '';
     position: absolute;
     top: 5px;

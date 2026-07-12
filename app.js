@@ -2598,12 +2598,14 @@ function toggleGPS() {
         state.userLocation = null;
         hasInitialGpsReorder = false;
         btn.classList.remove('active');
+        btn.classList.remove('searching'); // Quitar spinner de carga al apagar
         releaseWakeLock(); // Permitir que la pantalla se apague al apagar el GPS
         showPreciseLocationHelper(false); // Limpiar ayuda si estuviera abierta
     } else {
         // Activar GPS
         state.gpsActive = true;
         btn.classList.add('active');
+        btn.classList.add('searching'); // Iniciar spinner de búsqueda
         hasInitialGpsReorder = false;
         requestWakeLock(); // Evitar que la pantalla se apague al encender el GPS
 
@@ -2648,6 +2650,12 @@ function toggleGPS() {
 function onLocationFound(e) {
     const radius = e.accuracy;
     state.userLocation = e.latlng;
+
+    // Detener el spinner de carga (searching) ya que el marcador está posicionado en el mapa
+    const gpsBtn = document.getElementById('gpsToggle');
+    if (gpsBtn && gpsBtn.classList.contains('searching')) {
+        gpsBtn.classList.remove('searching');
+    }
 
     // Diagnóstico en la consola de la app
     logDebug(`Lectura GPS: lat=${e.latlng.lat.toFixed(6)}, lng=${e.latlng.lng.toFixed(6)}, precisión=${Math.round(radius)}m`);
