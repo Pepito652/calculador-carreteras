@@ -768,6 +768,28 @@ body, html {
     background-color: var(--accent);
     color: white;
     border-color: var(--accent);
+    position: relative;
+}
+
+.gps-btn.active::after {
+    content: '';
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    right: 5px;
+    bottom: 5px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-top-color: #ffffff;
+    animation: gpsSpinnerRotate 1.5s linear infinite;
+    pointer-events: none;
+    box-sizing: border-box;
+}
+
+@keyframes gpsSpinnerRotate {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .layer-toggle-btn {
