@@ -1,4 +1,4 @@
-const CACHE_NAME = 'road-clearing-v42';
+const CACHE_NAME = 'road-clearing-v43';
 const ASSETS = [
   './',
   './index.html',
@@ -19,10 +19,11 @@ self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[Service Worker] Caching app shell assets...');
-      // Usar map para añadir individualmente y que si falla uno no se rompa todo el cache
+      // Usar map para añadir de forma segura forzando descarga directa de red para evitar HTTP caché antiguo
       return Promise.all(
         ASSETS.map((asset) => {
-          return cache.add(asset).catch(err => {
+          const request = new Request(asset, { cache: 'reload' });
+          return cache.add(request).catch(err => {
             console.error(`[Service Worker] Falló el precaché de ${asset}:`, err);
           });
         })
