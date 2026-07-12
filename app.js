@@ -2714,6 +2714,12 @@ function onLocationFound(e) {
     const radius = e.accuracy;
     state.userLocation = e.latlng;
 
+    // Resolver cualquier promesa en espera del primer fix de GPS
+    if (typeof state.onFirstLocationFix === 'function') {
+        state.onFirstLocationFix(e.latlng);
+        state.onFirstLocationFix = null;
+    }
+
     // Detener el spinner de carga (searching) ya que el marcador está posicionado en el mapa
     const gpsBtn = document.getElementById('gpsToggle');
     if (gpsBtn && gpsBtn.classList.contains('searching')) {
@@ -2880,9 +2886,63 @@ function showPreciseLocationHelper(show) {
     }
 }
 
+// Esperar asíncronamente el primer fix de coordenadas del GPS
+function waitForGpsFix(timeoutMs = 6000) {
+    return new Promise((resolve, reject) => {
+        // Si ya tenemos coordenadas válidas, resolvemos de inmediato
+        if (state.userLocation) {
+            resolve(state.userLocation);
+            return;
+        }
 
+        // Crear una indicación visual en la parte superior para que el usuario sepa que está conectando
+        const banner = document.createElement('div');
+        banner.id = 'gps-waiting-fix-overlay';
+        banner.style.cssText = `
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(9, 9, 11, 0.95);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            color: #f4f4f5;
+            padding: 14px 28px;
+            border-radius: 20px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            z-index: 10001;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        `;
+        banner.innerHTML = `
+            <div class="gps-pulse-dot-orange" style="margin-right: 4px;"></div>
+            <span>Estableciendo conexión con satélites GPS...</span>
+        `;
+        document.body.appendChild(banner);
 
+        // Guardar el callback temporal
+        state.onFirstLocationFix = (latlng) => {
+            clearTimeout(timer);
+            banner.style.opacity = '0';
+            setTimeout(() => banner.remove(), 300);
+            resolve(latlng);
+        };
 
+        const timer = setTimeout(() => {
+            state.onFirstLocationFix = null;
+            banner.style.opacity = '0';
+            setTimeout(() => banner.remove(), 300);
+            reject(new Error("Timeout esperando señal GPS"));
+        }, timeoutMs);
+    });
+}
 
 // Alternar capa de mapa entre oscuro y satélite
 function toggleMapLayer() {
@@ -3297,22 +3357,41 @@ async function startActiveWorkMode(tramoId, skipDistanceCheck = false) {
             toggleGPS();
         }
 
-        // Si tenemos la ubicación del GPS y no omitimos el control, verificar si estamos demasiado lejos (> 50 metros)
-        if (!skipDistanceCheck && state.userLocation) {
-            const proj = projectLatLngToPolyline(state.userLocation.lat, state.userLocation.lng, tramo.coordinates);
-            if (proj.distance > 50) {
-                const startPt = tramo.coordinates[0];
-                const action = await appGpsDistanceDialog(proj.distance, startPt);
-                
-                if (action === 'cancel') {
-                    return; // Cancelar inicio
-                } else if (action === 'maps') {
-                    // Abrir Google Maps en pestaña nueva para navegar al inicio del tramo
-                    const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${startPt[0]},${startPt[1]}`;
-                    window.open(mapsUrl, '_blank');
-                    return;
+        // Si no omitimos el control de distancia
+        if (!skipDistanceCheck) {
+            let loc = state.userLocation;
+            
+            // Si no tenemos ubicación de GPS todavía (porque se acaba de encender), esperamos el primer fix
+            if (!loc) {
+                try {
+                    loc = await waitForGpsFix(5000); // Esperar hasta 5 segundos la primera señal
+                } catch (err) {
+                    // Si da timeout (no hay satélites o estamos en interiores), preguntar si iniciar forzadamente
+                    const forceStart = await appConfirm(
+                        "No se recibe señal GPS. ¿Deseas comenzar el desbroce de todos modos sin guiado en tiempo real?",
+                        "Esperando GPS..."
+                    );
+                    if (!forceStart) return; // Cancelar inicio si dice que no
                 }
-                // Si la acción es 'confirm', continúa normalmente
+            }
+
+            // Si finalmente tenemos ubicación, verificar la distancia
+            if (loc) {
+                const proj = projectLatLngToPolyline(loc.lat, loc.lng, tramo.coordinates);
+                if (proj.distance > 50) {
+                    const startPt = tramo.coordinates[0];
+                    const action = await appGpsDistanceDialog(proj.distance, startPt);
+                    
+                    if (action === 'cancel') {
+                        return; // Cancelar inicio
+                    } else if (action === 'maps') {
+                        // Abrir Google Maps en pestaña nueva para navegar al inicio del tramo
+                        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${startPt[0]},${startPt[1]}`;
+                        window.open(mapsUrl, '_blank');
+                        return;
+                    }
+                    // Si es 'confirm', continúa normalmente
+                }
             }
         }
 
