@@ -2545,14 +2545,50 @@ function getWeekDateRangeString(weekKey) {
     }
 }
 
+// --- GESTIÓN DE PANTALLA SIEMPRE ENCENDIDA (WAKE LOCK API) ---
+let wakeLock = null;
+
+async function requestWakeLock() {
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            logDebug('Pantalla siempre encendida (Wake Lock) activa.');
+        }
+    } catch (err) {
+        console.warn('Wake Lock no soportado o denegado por el navegador:', err);
+    }
+}
+
+function releaseWakeLock() {
+    try {
+        if (wakeLock) {
+            wakeLock.release();
+            wakeLock = null;
+            logDebug('Pantalla siempre encendida (Wake Lock) liberada.');
+        }
+    } catch (err) {
+        console.error('Error al liberar Wake Lock:', err);
+    }
+}
+
+// Reactivar Wake Lock si el usuario cambia de app y regresa
+document.addEventListener('visibilitychange', async () => {
+    if (state.gpsActive && document.visibilityState === 'visible') {
+        await requestWakeLock();
+    }
+});
+
 // --- GEOLOCALIZACIÓN GPS ---
+let webGpsWatchId = null;
+
 function toggleGPS() {
     const btn = document.getElementById('gpsToggle');
     
     if (state.gpsActive) {
         // Desactivar GPS
-        if (!window.ReactNativeWebView) {
-            map.stopLocate();
+        if (!window.ReactNativeWebView && webGpsWatchId !== null) {
+            navigator.geolocation.clearWatch(webGpsWatchId);
+            webGpsWatchId = null;
         }
         if (gpsMarker) map.removeLayer(gpsMarker);
         if (gpsCircle) map.removeLayer(gpsCircle);
@@ -2562,22 +2598,40 @@ function toggleGPS() {
         state.userLocation = null;
         hasInitialGpsReorder = false;
         btn.classList.remove('active');
+        releaseWakeLock(); // Permitir que la pantalla se apague al apagar el GPS
     } else {
         // Activar GPS
         state.gpsActive = true;
         btn.classList.add('active');
         hasInitialGpsReorder = false;
+        requestWakeLock(); // Evitar que la pantalla se apague al encender el GPS
 
         // Solo activar geolocalización del navegador si NO estamos dentro de la app nativa WebView
         if (!window.ReactNativeWebView) {
-            map.locate({
-                watch: true,
-                enableHighAccuracy: true,
-                setView: false // Nosotros manejamos el enfoque
-            });
-
-            map.on('locationfound', onLocationFound);
-            map.on('locationerror', onLocationError);
+            if (navigator.geolocation) {
+                webGpsWatchId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        const latlng = L.latLng(position.coords.latitude, position.coords.longitude);
+                        onLocationFound({
+                            latlng: latlng,
+                            accuracy: position.coords.accuracy,
+                            heading: position.coords.heading,
+                            speed: position.coords.speed
+                        });
+                    },
+                    (error) => {
+                        onLocationError({ message: error.message });
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 15000,
+                        maximumAge: 0 // Forzar lectura directa sin caché antigua
+                    }
+                );
+            } else {
+                appAlert("Tu navegador no soporta geolocalización.", "error");
+                toggleGPS();
+            }
         }
     }
     if (window.ReactNativeWebView) {
