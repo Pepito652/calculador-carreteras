@@ -2649,12 +2649,15 @@ function onLocationFound(e) {
     const radius = e.accuracy;
     state.userLocation = e.latlng;
 
-    // Si la precisión es baja (mayor a 300m), contamos lecturas
+    // Diagnóstico en la consola de la app
+    logDebug(`Lectura GPS: lat=${e.latlng.lat.toFixed(6)}, lng=${e.latlng.lng.toFixed(6)}, precisión=${Math.round(radius)}m`);
+
+    // Si la precisión es baja (mayor a 300m), evaluamos si mostrar ayuda
     if (radius > 300) {
         if (!state.badGpsCount) state.badGpsCount = 0;
         state.badGpsCount++;
-        // Si tras 3 lecturas continuadas (~3 seg) la precisión sigue siendo mala, mostramos la tarjeta tutorial
-        if (state.badGpsCount >= 3) {
+        // Si es aproximada pura (>= 1000m) se muestra al instante. Si es intermedia, espera 3 lecturas para evitar falsos positivos
+        if (radius >= 1000 || state.badGpsCount >= 3) {
             showPreciseLocationHelper(true);
         }
     } else {
