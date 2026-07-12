@@ -1186,7 +1186,9 @@ body, html {
     border-left: 5px solid transparent;
     border-right: 5px solid transparent;
     border-bottom: 9px solid #10b981; /* Flecha verde de dirección */
-    transform-origin: 50% 120%;
+    margin-left: -5px;
+    margin-top: -14px;
+    transform-origin: 50% 155%;
     filter: drop-shadow(0 2px 2px rgba(0,0,0,0.4));
     transition: transform 0.2s ease;
 }

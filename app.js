@@ -2662,41 +2662,56 @@ function onLocationFound(e) {
         showPreciseLocationHelper(false); // Ocultar si la señal vuelve a ser precisa
     }
 
-    // Crear o mover el marcador GPS
+    // Filtro de estabilidad (deadband) para evitar que el punto vibre o salte al estar parados
+    let shouldUpdateVisualPosition = true;
     if (gpsMarker) {
-        gpsMarker.setLatLng(e.latlng);
-        gpsCircle.setLatLng(e.latlng);
-        gpsCircle.setRadius(radius);
-        
-        // Rotar la flecha de dirección si nos estamos moviendo (velocidad > 0.5 m/s)
-        const arrow = document.getElementById('gpsArrow');
-        if (arrow) {
-            if (e.heading !== undefined && e.heading !== null && e.speed > 0.5) {
-                arrow.style.transform = `translate(-50%, -50%) rotate(${e.heading}deg)`;
-                arrow.style.display = 'block';
-            } else {
-                arrow.style.display = 'none';
-            }
+        const lastLatLng = gpsMarker.getLatLng();
+        const distMoved = lastLatLng.distanceTo(e.latlng);
+        // Si nos hemos movido menos de 3.5 metros y la velocidad es menor a 3.0 km/h (0.83 m/s),
+        // congelamos la posición visual para mantener el marcador totalmente estático.
+        if (distMoved < 3.5 && (e.speed === undefined || e.speed === null || e.speed < 0.83)) {
+            shouldUpdateVisualPosition = false;
         }
-    } else {
-        // Icono de posición con diseño de pulso azul y flecha de dirección integrada
-        const gpsIcon = L.divIcon({
-            className: 'gps-pulse-marker',
-            html: `<div class="pulse"></div><div class="dot"><div class="arrow" id="gpsArrow" style="display: none;"></div></div>`,
-            iconSize: [24, 24],
-            iconAnchor: [12, 12]
-        });
+    }
 
-        gpsMarker = L.marker(e.latlng, { icon: gpsIcon }).addTo(map);
-        gpsCircle = L.circle(e.latlng, radius, {
-            color: COLOR_GPS,
-            fillColor: COLOR_GPS,
-            fillOpacity: 0.15,
-            weight: 1
-        }).addTo(map);
+    if (shouldUpdateVisualPosition) {
+        state.userLocation = e.latlng;
+        
+        if (gpsMarker) {
+            gpsMarker.setLatLng(e.latlng);
+            gpsCircle.setLatLng(e.latlng);
+            gpsCircle.setRadius(radius);
+        } else {
+            // Icono de posición con diseño de pulso azul y flecha de dirección integrada
+            const gpsIcon = L.divIcon({
+                className: 'gps-pulse-marker',
+                html: `<div class="pulse"></div><div class="dot"><div class="arrow" id="gpsArrow" style="display: none;"></div></div>`,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
 
-        // La primera vez que encuentra ubicación, centramos el mapa con zoom adecuado
-        map.setView(e.latlng, 16);
+            gpsMarker = L.marker(e.latlng, { icon: gpsIcon }).addTo(map);
+            gpsCircle = L.circle(e.latlng, radius, {
+                color: COLOR_GPS,
+                fillColor: COLOR_GPS,
+                fillOpacity: 0.15,
+                weight: 1
+            }).addTo(map);
+
+            // La primera vez que encuentra ubicación, centramos el mapa con zoom adecuado
+            map.setView(e.latlng, 16);
+        }
+    }
+
+    // Rotar y mostrar la flecha de dirección solo si estamos avanzando a más de 3.0 km/h (0.83 m/s)
+    const arrow = document.getElementById('gpsArrow');
+    if (arrow) {
+        if (e.heading !== undefined && e.heading !== null && e.speed > 0.83) {
+            arrow.style.transform = `rotate(${e.heading}deg)`;
+            arrow.style.display = 'block';
+        } else {
+            arrow.style.display = 'none';
+        }
     }
 
     // Si el GPS está activo y aún no hemos hecho el reordenamiento inicial, lo hacemos
