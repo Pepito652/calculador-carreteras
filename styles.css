@@ -855,7 +855,7 @@ body, html {
 
 /* Road Detail overlay card (Drawer from bottom on mobile, popup on desktop) */
 .road-detail-overlay {
-    position: absolute;
+    position: fixed;
     bottom: 0;
     left: 0;
     width: 100%;
