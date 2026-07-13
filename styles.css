@@ -887,10 +887,10 @@ body, html {
     position: relative;
     pointer-events: auto;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: roadSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes slideUp {
+@keyframes roadSlideUp {
     from {
         transform: translateY(120%);
         opacity: 0;
@@ -901,7 +901,7 @@ body, html {
     }
 }
 
-@keyframes slideDown {
+@keyframes roadSlideDown {
     from {
         transform: translateY(0);
         opacity: 1;
@@ -913,7 +913,7 @@ body, html {
 }
 
 .road-detail-overlay.closing .road-detail-card {
-    animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: roadSlideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .close-overlay-btn {
