@@ -1844,6 +1844,15 @@ function openRoadDetail(tramoId, focusMap = true) {
                              onmouseout="this.style.backgroundColor='#f59e0b'">
                         <i data-lucide="scissors" style="width: 12px; height: 12px; vertical-align: -2px;"></i> Dividir Tramo en Dos
                     </button>
+
+                    ${(tramo.parentInfo || tramo.id.includes('_p1_') || tramo.id.includes('_p2_')) ? `
+                    <button onclick="undoSplitTramo('${tramo.id}')"
+                             style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; background-color: #4b5563; color: #fff; border: none; border-radius: 6px; font-weight: bold; font-size: 0.75rem; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: background-color 0.2s;"
+                             onmouseover="this.style.backgroundColor='#374151'"
+                             onmouseout="this.style.backgroundColor='#4b5563'">
+                        <i data-lucide="rotate-ccw" style="width: 12px; height: 12px; vertical-align: -2px;"></i> Deshacer División
+                    </button>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -2503,8 +2512,20 @@ function splitTramoAtPoint(tramo, latlng) {
         const length1 = calculateLineLength(coordsPart1);
         const length2 = calculateLineLength(coordsPart2);
 
-        // Crear los dos nuevos tramos
+        // Crear los dos nuevos tramos con información de retorno (parentInfo)
         const timePart = Date.now();
+        const parentInfo = {
+            id: tramo.id,
+            name: tramo.parentInfo ? tramo.parentInfo.name : tramo.name,
+            status: tramo.parentInfo ? tramo.parentInfo.status : tramo.status,
+            rightMarginStatus: tramo.parentInfo ? tramo.parentInfo.rightMarginStatus : tramo.rightMarginStatus,
+            leftMarginStatus: tramo.parentInfo ? tramo.parentInfo.leftMarginStatus : tramo.leftMarginStatus,
+            dateCompleted: tramo.parentInfo ? tramo.parentInfo.dateCompleted : tramo.dateCompleted,
+            color: tramo.parentInfo ? tramo.parentInfo.color : tramo.color,
+            weekNumber: tramo.parentInfo ? tramo.parentInfo.weekNumber : tramo.weekNumber,
+            weekCompleted: tramo.parentInfo ? tramo.parentInfo.weekCompleted : tramo.weekCompleted
+        };
+
         const part1 = {
             ...tramo,
             id: `${tramo.id}_p1_${timePart}`,
@@ -2512,7 +2533,8 @@ function splitTramoAtPoint(tramo, latlng) {
             coordinates: coordsPart1,
             originalCoordinates: coordsPart1.map(c => [...c]),
             length: length1,
-            mapLayer: null
+            mapLayer: null,
+            parentInfo: parentInfo
         };
 
         const part2 = {
@@ -2522,7 +2544,8 @@ function splitTramoAtPoint(tramo, latlng) {
             coordinates: coordsPart2,
             originalCoordinates: coordsPart2.map(c => [...c]),
             length: length2,
-            mapLayer: null
+            mapLayer: null,
+            parentInfo: parentInfo
         };
 
         // Reemplazar tramo en la lista principal
@@ -2548,6 +2571,9 @@ function splitTramoAtPoint(tramo, latlng) {
         renderTramosOnMap();
         updateUI();
 
+        // Alerta personalizada de éxito
+        appAlert(`El tramo '${tramo.name}' ha sido dividido con éxito en dos partes.`, 'success');
+
         // Abrir automáticamente el detalle de la primera parte para conveniencia del operario
         setTimeout(() => {
             openRoadDetail(part1.id);
@@ -2556,6 +2582,124 @@ function splitTramoAtPoint(tramo, latlng) {
     } catch (e) {
         console.error("Error al dividir tramo:", e);
         appAlert("Fallo al dividir el tramo: " + e.message, "error");
+    }
+}
+
+// Deshacer la división y volver a unir los tramos hijos en el original
+async function undoSplitTramo(tramoId) {
+    try {
+        const tramo = state.tramos.find(t => t.id === tramoId);
+        if (!tramo) return;
+
+        let parentId = null;
+        let partPrefix = null;
+        let timestamp = null;
+
+        if (tramo.parentInfo && tramo.parentInfo.id) {
+            parentId = tramo.parentInfo.id;
+            const match = tramo.id.match(/(.+)(_p[12]_)(\d+)$/);
+            if (match) {
+                partPrefix = match[2];
+                timestamp = match[3];
+            }
+        } else {
+            const match = tramo.id.match(/(.+)(_p[12]_)(\d+)$/);
+            if (match) {
+                parentId = match[1];
+                partPrefix = match[2];
+                timestamp = match[3];
+            }
+        }
+
+        if (!parentId || !partPrefix || !timestamp) {
+            appAlert("Este tramo no proviene de una división o no se puede identificar su origen.", "warning");
+            return;
+        }
+
+        const partnerId = partPrefix === '_p1_' ? `${parentId}_p2_${timestamp}` : `${parentId}_p1_${timestamp}`;
+        const partner = state.tramos.find(t => t.id === partnerId);
+
+        if (!partner) {
+            appAlert("No se puede deshacer la división. La otra mitad de esta carretera no se encuentra en la lista actual (puede haber sido eliminada o subdividida nuevamente).", "warning");
+            return;
+        }
+
+        const confirmUndo = await appConfirm(
+            `¿Estás seguro de que deseas deshacer el corte y volver a unir '${tramo.name}' y '${partner.name}' en la carretera original?`,
+            "Deshacer División"
+        );
+        if (!confirmUndo) return;
+
+        const part1 = partPrefix === '_p1_' ? tramo : partner;
+        const part2 = partPrefix === '_p1_' ? partner : tramo;
+
+        // Unir coordenadas. El último punto de part1 es idéntico al primer punto de part2.
+        const mergedCoords = [...part1.coordinates.slice(0, -1), ...part2.coordinates];
+
+        // Reconstruir el tramo original (padre)
+        const parentTramo = {
+            id: parentId,
+            name: tramo.parentInfo ? tramo.parentInfo.name : tramo.name.replace(/\s*\(Parte\s+[12]\)$/, ''),
+            fileId: tramo.fileId,
+            coordinates: mergedCoords,
+            originalCoordinates: mergedCoords.map(c => [...c]),
+            length: calculateLineLength(mergedCoords),
+            status: tramo.parentInfo ? tramo.parentInfo.status : 'pending',
+            rightMarginStatus: tramo.parentInfo ? tramo.parentInfo.rightMarginStatus : 'pending',
+            leftMarginStatus: tramo.parentInfo ? tramo.parentInfo.leftMarginStatus : 'pending',
+            dateCompleted: tramo.parentInfo ? tramo.parentInfo.dateCompleted : null,
+            color: tramo.parentInfo ? tramo.parentInfo.color : null,
+            weekNumber: tramo.parentInfo ? tramo.parentInfo.weekNumber : null,
+            weekCompleted: tramo.parentInfo ? tramo.parentInfo.weekCompleted : null,
+            mapLayer: null
+        };
+
+        // Si el padre original tenía parentInfo de un nivel superior (ej. abuelo), lo mantenemos
+        if (tramo.parentInfo && tramo.parentInfo.parentInfo) {
+            parentTramo.parentInfo = tramo.parentInfo.parentInfo;
+        }
+
+        // Reemplazar los dos tramos hijos por el padre en state.tramos
+        const idx1 = state.tramos.findIndex(t => t.id === part1.id);
+        const idx2 = state.tramos.findIndex(t => t.id === part2.id);
+
+        if (idx1 !== -1 && idx2 !== -1) {
+            const minIdx = Math.min(idx1, idx2);
+            const maxIdx = Math.max(idx1, idx2);
+            state.tramos.splice(maxIdx, 1);
+            state.tramos.splice(minIdx, 1, parentTramo);
+        }
+
+        // Reemplazar en state.routeOrder
+        const rIdx1 = state.routeOrder.indexOf(part1.id);
+        const rIdx2 = state.routeOrder.indexOf(part2.id);
+        if (rIdx1 !== -1 && rIdx2 !== -1) {
+            const rMinIdx = Math.min(rIdx1, rIdx2);
+            const rMaxIdx = Math.max(rIdx1, rIdx2);
+            state.routeOrder.splice(rMaxIdx, 1);
+            state.routeOrder.splice(rMinIdx, 1, parentTramo.id);
+        }
+
+        // Remover las capas del mapa de ambos tramos hijos
+        if (part1.mapLayer && map) tramosLayerGroup.removeLayer(part1.mapLayer);
+        if (part2.mapLayer && map) tramosLayerGroup.removeLayer(part2.mapLayer);
+
+        saveToLocalStorage();
+        renderTramosOnMap();
+        updateUI();
+
+        map.closePopup();
+
+        appAlert(`Los tramos se han vuelto a unir correctamente en '${parentTramo.name}'.`, 'success');
+
+        // Abrir detalles del tramo unido
+        setTimeout(() => {
+            openRoadDetail(parentTramo.id);
+        }, 300);
+
+    } catch (err) {
+        console.error("Error al deshacer división:", err);
+        appAlert("Fallo al unir los tramos: " + err.message, "error");
     }
 }
 
@@ -2783,8 +2927,8 @@ function onLocationFound(e) {
         gpsBtn.classList.remove('searching');
     }
 
-    // Diagnóstico en la consola de la app
-    logDebug(`Lectura GPS: lat=${e.latlng.lat.toFixed(6)}, lng=${e.latlng.lng.toFixed(6)}, precisión=${Math.round(radius)}m`);
+    // Registro interno en consola (sin saturar el panel de diagnóstico visual en la UI de la app)
+    console.log(`Lectura GPS: lat=${e.latlng.lat.toFixed(6)}, lng=${e.latlng.lng.toFixed(6)}, precisión=${Math.round(radius)}m`);
 
     // Si la precisión es baja (mayor a 300m), evaluamos si mostrar ayuda
     if (radius > 300) {
