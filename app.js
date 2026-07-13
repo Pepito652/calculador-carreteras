@@ -2526,10 +2526,23 @@ function splitTramoAtPoint(tramo, latlng) {
             weekCompleted: tramo.parentInfo ? tramo.parentInfo.weekCompleted : tramo.weekCompleted
         };
 
+        // Determinar nombres jerárquicos decimales para evitar acumulaciones liosas de "(Parte X)"
+        const nameMatch = tramo.name.match(/(.+)\s+\(Parte\s+([\d\.]+)\)$/);
+        let namePart1, namePart2;
+        if (nameMatch) {
+            const cleanBase = nameMatch[1];
+            const currentSeq = nameMatch[2];
+            namePart1 = `${cleanBase} (Parte ${currentSeq}.1)`;
+            namePart2 = `${cleanBase} (Parte ${currentSeq}.2)`;
+        } else {
+            namePart1 = `${tramo.name} (Parte 1)`;
+            namePart2 = `${tramo.name} (Parte 2)`;
+        }
+
         const part1 = {
             ...tramo,
             id: `${tramo.id}_p1_${timePart}`,
-            name: `${tramo.name} (Parte 1)`,
+            name: namePart1,
             coordinates: coordsPart1,
             originalCoordinates: coordsPart1.map(c => [...c]),
             length: length1,
@@ -2540,7 +2553,7 @@ function splitTramoAtPoint(tramo, latlng) {
         const part2 = {
             ...tramo,
             id: `${tramo.id}_p2_${timePart}`,
-            name: `${tramo.name} (Parte 2)`,
+            name: namePart2,
             coordinates: coordsPart2,
             originalCoordinates: coordsPart2.map(c => [...c]),
             length: length2,
@@ -3388,7 +3401,7 @@ function saveToLocalStorage() {
             fileLoaded: state.fileLoaded,
             // Guardamos todo salvo las capas del mapa (que tienen referencias circulares)
             tramos: state.tramos.map(t => {
-                const { mapLayer, ...rest } = t;
+                const { mapLayer, clickTarget, ...rest } = t;
                 return rest;
             }),
             routeOrder: state.routeOrder,
