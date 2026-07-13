@@ -352,6 +352,13 @@ function initMap() {
             // Ignorar silenciosamente errores de parseo de otros mensajes del navegador
         }
     });
+
+    // Escuchar clics en el mapa vacío para cerrar la tarjeta inferior de detalles
+    map.on('click', (e) => {
+        if (!state.isSplitMode) {
+            closeRoadDetail();
+        }
+    });
 }
 
 // Inicialización de Event Listeners de la UI
@@ -1728,19 +1735,13 @@ function openRoadDetail(tramoId, focusMap = true) {
 
         state.selectedTramoId = tramoId;
 
-        // Calcular coordenada del punto medio del tramo para anclar el popup
-        const coordinates = tramo.coordinates;
-        if (!coordinates || coordinates.length === 0) return;
-        const midIndex = Math.floor(coordinates.length / 2);
-        const midPoint = L.latLng(coordinates[midIndex][0], coordinates[midIndex][1]);
-
-        // Centrar mapa en el bocadillo (punto medio con un desfase vertical de 80px en móvil / 120px en PC para centrar el popup)
-        if (focusMap) {
-            const targetZoom = Math.max(map.getZoom(), 16);
-            const offset = window.innerWidth < 768 ? 100 : 120;
-            const targetPoint = map.project(midPoint, targetZoom).subtract([0, offset]);
-            const targetLatLng = map.unproject(targetPoint, targetZoom);
-            map.setView(targetLatLng, targetZoom);
+        // Centrar mapa de forma que deje libre el espacio de la tarjeta inferior (Bottom Sheet)
+        if (focusMap && tramo.mapLayer) {
+            map.fitBounds(tramo.mapLayer.getBounds(), {
+                paddingTopLeft: [25, 25],
+                paddingBottomRight: [25, 200], // 200px de margen inferior libre para el panel flotante
+                maxZoom: 18
+            });
         }
 
         if (tramo.mapLayer) {
@@ -1751,10 +1752,10 @@ function openRoadDetail(tramoId, focusMap = true) {
         let statusText = 'Pendiente';
         let statusColor = '#ef4444';
         if (tramo.status === 'completed') {
-            statusText = 'Desbrozado (2 márgenes)';
+            statusText = 'Completado';
             statusColor = '#10b981';
         } else if (tramo.status === 'partial') {
-            statusText = 'Parcial (1 margen finalizado)';
+            statusText = 'Parcial';
             statusColor = '#fbbf24';
         }
 
@@ -1769,34 +1770,41 @@ function openRoadDetail(tramoId, focusMap = true) {
         const rightMarginLabel = tramo.rightMarginStatus === 'completed' ? 'Finalizado' : 'Pendiente';
         const leftMarginLabel = tramo.leftMarginStatus === 'completed' ? 'Finalizado' : 'Pendiente';
 
-        const popupContent = `
-            <div class="tramo-popup" style="font-family: 'Outfit', sans-serif; color: #f3f4f6; min-width: 230px; line-height: 1.4;">
-                <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 600; color: #fff;">${tramo.name}</h4>
-                <div style="margin-bottom: 8px; font-size: 0.8rem; color: #9ca3af;">
-                    <div style="margin-bottom: 2px;"><strong>Archivo:</strong> ${fileOrigin}</div>
-                    <div style="margin-bottom: 2px;"><strong>Longitud:</strong> ${(tramo.length / 1000).toFixed(2)} km</div>
-                    <div style="margin-bottom: 4px;"><strong>Estado:</strong> <span style="color: ${statusColor}; font-weight: bold;">${statusText}</span></div>
+        const overlay = document.getElementById('roadDetailOverlay');
+        if (!overlay) return;
+
+        overlay.innerHTML = `
+            <div class="road-detail-card">
+                <button class="close-overlay-btn" id="closeOverlay" onclick="closeRoadDetail()" aria-label="Cerrar detalles" style="position: absolute; top: 0.75rem; right: 1rem; background: none; border: none; color: var(--text-secondary); font-size: 1.75rem; cursor: pointer; line-height: 1;">×</button>
+                <div class="road-detail-content" style="font-family: 'Outfit', sans-serif; color: #f3f4f6; line-height: 1.4;">
+                    <h3 style="margin: 0 0 6px 0; font-size: 1.05rem; font-weight: 600; color: #fff; padding-right: 1.5rem; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${tramo.name}">${tramo.name}</h3>
+                    
+                    <div style="margin-bottom: 8px; font-size: 0.8rem; color: #9ca3af; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <span><strong>Origen:</strong> ${fileOrigin}</span>
+                        <span><strong>Longitud:</strong> ${(tramo.length / 1000).toFixed(2)} km</span>
+                        <span><strong>Estado:</strong> <span style="color: ${statusColor}; font-weight: bold;">${statusText}</span></span>
+                    </div>
                     
                     <!-- Control de Márgenes -->
-                    <div style="margin: 8px 0 6px 0; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 6px;">
-                        <strong style="display: block; margin-bottom: 4px; font-size: 0.72rem; color: #fff;">Márgenes de Carretera:</strong>
-                        <div style="display: flex; gap: 4px; justify-content: space-between;">
+                    <div style="margin: 10px 0 8px 0; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">
+                        <strong style="display: block; margin-bottom: 6px; font-size: 0.75rem; color: #fff;">Márgenes de Carretera:</strong>
+                        <div style="display: flex; gap: 6px; justify-content: space-between;">
                             <button onclick="toggleMarginStatusPopup('${tramo.id}', 'right')" 
-                                    style="flex: 1; font-size: 0.7rem; padding: 4px; border: 1px solid ${rightMarginColor}; background: ${tramo.rightMarginStatus === 'completed' ? 'rgba(16,185,129,0.1)' : 'transparent'}; color: ${rightMarginColor}; border-radius: 4px; cursor: pointer; font-weight: bold; transition: all 0.2s;">
+                                    style="flex: 1; font-size: 0.75rem; padding: 6px; border: 1px solid ${rightMarginColor}; background: ${tramo.rightMarginStatus === 'completed' ? 'rgba(16,185,129,0.1)' : 'transparent'}; color: ${rightMarginColor}; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;">
                                 Der: ${rightMarginLabel}
                             </button>
                             <button onclick="toggleMarginStatusPopup('${tramo.id}', 'left')" 
-                                    style="flex: 1; font-size: 0.7rem; padding: 4px; border: 1px solid ${leftMarginColor}; background: ${tramo.leftMarginStatus === 'completed' ? 'rgba(16,185,129,0.1)' : 'transparent'}; color: ${leftMarginColor}; border-radius: 4px; cursor: pointer; font-weight: bold; transition: all 0.2s;">
+                                    style="flex: 1; font-size: 0.75rem; padding: 6px; border: 1px solid ${leftMarginColor}; background: ${tramo.leftMarginStatus === 'completed' ? 'rgba(16,185,129,0.1)' : 'transparent'}; color: ${leftMarginColor}; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;">
                                 Izq: ${leftMarginLabel}
                             </button>
                         </div>
                     </div>
 
                     ${(tramo.status === 'completed' || tramo.status === 'partial') ? `
-                        <div style="margin-top: 6px; display: flex; flex-direction: column; gap: 2px;">
-                            <strong>Semana de Desbroce:</strong>
+                        <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; margin-bottom: 8px;">
+                            <strong style="font-size: 0.72rem; color: #fff;">Semana de Desbroce:</strong>
                             <select onchange="updateTramoWeek('${tramo.id}', this.value)"
-                                    style="background: #27272a; color: #fff; border: 1px solid #52525b; border-radius: 4px; padding: 3px 6px; font-size: 0.75rem; font-family: sans-serif; cursor: pointer; outline: none; margin-top: 2px; width: 100%;">
+                                    style="background: #27272a; color: #fff; border: 1px solid #52525b; border-radius: 6px; padding: 4px 6px; font-size: 0.78rem; font-family: sans-serif; cursor: pointer; outline: none; width: 100%;">
                                 ${(() => {
                                     const weekOptions = new Set();
                                     
@@ -1821,69 +1829,51 @@ function openRoadDetail(tramoId, focusMap = true) {
                             </select>
                         </div>
                     ` : ''}
-                </div>
-                <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
-                    <!-- Botón Comenzar guiado en tiempo real -->
-                    <button onclick="startActiveWorkMode('${tramo.id}')"
-                            style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; background-color: #10b981; color: #fff; border: none; border-radius: 6px; font-weight: bold; font-size: 0.8rem; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: background-color 0.2s;"
-                            onmouseover="this.style.backgroundColor='#059669'"
-                            onmouseout="this.style.backgroundColor='#10b981'">
-                        <i data-lucide="play" style="width: 12px; height: 12px; vertical-align: -2px;"></i> Comenzar Desbroce
-                    </button>
-                    
-                    <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" 
-                       style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; background-color: #3b82f6; color: #fff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 0.75rem; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: background-color 0.2s;"
-                       onmouseover="this.style.backgroundColor='#2563eb'"
-                       onmouseout="this.style.backgroundColor='#3b82f6'">
-                        <i data-lucide="navigation" style="width: 12px; height: 12px; vertical-align: -2px;"></i> Ir en Google Maps
-                    </a>
-                    
-                    <button onclick="startSplitTramoMode('${tramo.id}')"
-                             style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; background-color: #f59e0b; color: #fff; border: none; border-radius: 6px; font-weight: bold; font-size: 0.75rem; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: background-color 0.2s;"
-                             onmouseover="this.style.backgroundColor='#d97706'"
-                             onmouseout="this.style.backgroundColor='#f59e0b'">
-                        <i data-lucide="scissors" style="width: 12px; height: 12px; vertical-align: -2px;"></i> Dividir Tramo en Dos
-                    </button>
 
-                    ${(tramo.parentInfo || tramo.id.includes('_p1_') || tramo.id.includes('_p2_')) ? `
-                    <button onclick="undoSplitTramo('${tramo.id}')"
-                             style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; background-color: #4b5563; color: #fff; border: none; border-radius: 6px; font-weight: bold; font-size: 0.75rem; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: background-color 0.2s;"
-                             onmouseover="this.style.backgroundColor='#374151'"
-                             onmouseout="this.style.backgroundColor='#4b5563'">
-                        <i data-lucide="rotate-ccw" style="width: 12px; height: 12px; vertical-align: -2px;"></i> Deshacer División
-                    </button>
-                    ` : ''}
+                    <div style="display: flex; gap: 6px; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px;">
+                        <!-- Botón Comenzar guiado en tiempo real -->
+                        <button onclick="startActiveWorkMode('${tramo.id}')"
+                                style="flex: 2; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; background-color: #10b981; color: #fff; border: none; border-radius: 6px; font-weight: bold; font-size: 0.8rem; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: background-color 0.2s;"
+                                onmouseover="this.style.backgroundColor='#059669'"
+                                onmouseout="this.style.backgroundColor='#10b981'">
+                            <i data-lucide="play" style="width: 12px; height: 12px; vertical-align: -2px;"></i> Comenzar
+                        </button>
+                        
+                        <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" 
+                           style="flex: 1.2; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 6px; background-color: #3b82f6; color: #fff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 0.75rem; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: background-color 0.2s;"
+                           onmouseover="this.style.backgroundColor='#2563eb'"
+                           onmouseout="this.style.backgroundColor='#3b82f6'">
+                            <i data-lucide="navigation" style="width: 12px; height: 12px; vertical-align: -2px;"></i> Guiar
+                        </a>
+
+                        <button onclick="startSplitTramoMode('${tramo.id}')"
+                                 style="flex: 1.2; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 6px; background-color: #f59e0b; color: #fff; border: none; border-radius: 6px; font-weight: bold; font-size: 0.75rem; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: background-color 0.2s;"
+                                 onmouseover="this.style.backgroundColor='#d97706'"
+                                 onmouseout="this.style.backgroundColor='#f59e0b'">
+                            <i data-lucide="scissors" style="width: 12px; height: 12px; vertical-align: -2px;"></i> Dividir
+                        </button>
+
+                        ${(tramo.parentInfo || tramo.id.includes('_p1_') || tramo.id.includes('_p2_')) ? `
+                        <button onclick="undoSplitTramo('${tramo.id}')"
+                                 style="flex: 1.2; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 6px; background-color: #4b5563; color: #fff; border: none; border-radius: 6px; font-weight: bold; font-size: 0.75rem; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: background-color 0.2s;"
+                                 onmouseover="this.style.backgroundColor='#374151'"
+                                 onmouseout="this.style.backgroundColor='#4b5563'">
+                            <i data-lucide="rotate-ccw" style="width: 12px; height: 12px; vertical-align: -2px;"></i> Unir
+                        </button>
+                        ` : ''}
+                    </div>
                 </div>
             </div>
         `;
 
-        if (tramo.mapLayer) {
-            // Crear un popup independiente (no atado a la línea de Leaflet)
-            const popup = L.popup({
-                closeButton: true,
-                className: 'custom-leaflet-popup',
-                autoPan: false,
-                autoPanPadding: L.point(15, 60)
-            })
-            .setLatLng(midPoint)
-            .setContent(popupContent);
-
-            // Al cerrar el bocadillo (remove), restablecer el estilo original de la línea
-            popup.on('remove', () => {
-                if (highlightedLayer === tramo.mapLayer) {
-                    tramo.mapLayer.setStyle(originalStyle);
-                    highlightedLayer = null;
-                }
-            });
-
-            // Abrir el popup directamente en el mapa
-            popup.openOn(map);
-        }
+        overlay.classList.add('active');
+        refreshLucideIcons();
     } catch (e) {
         console.error("Error en openRoadDetail:", e);
         logDebug("Fallo al abrir detalle de carretera: " + e.message, 'error');
     }
 }
+
 
 function closeRoadDetail() {
     try {
@@ -1892,6 +1882,17 @@ function closeRoadDetail() {
             highlightedLayer = null;
         }
         state.selectedTramoId = null;
+
+        // Ocultar tarjeta inferior con animación de salida
+        const overlay = document.getElementById('roadDetailOverlay');
+        if (overlay && overlay.classList.contains('active')) {
+            overlay.classList.add('closing');
+            setTimeout(() => {
+                overlay.classList.remove('active');
+                overlay.classList.remove('closing');
+            }, 250); // Mismo tiempo que la animación slideDown
+        }
+
         map.closePopup();
     } catch (e) {
         console.error("Error en closeRoadDetail:", e);
