@@ -3067,6 +3067,8 @@ function onLocationFound(e) {
     // Lógica del co-piloto de guiado en tiempo real
     if (state.activeWork && state.activeWork.tramoId) {
         updateActiveWorkProgress(e.latlng, e.speed);
+        // Centrar automáticamente la cámara en el GPS durante el trabajo activo para mantener el vehículo visible
+        map.panTo(e.latlng);
     } else {
         suggestNearbyTramo(e.latlng);
     }
@@ -3681,13 +3683,21 @@ async function startActiveWorkMode(tramoId, skipDistanceCheck = false) {
             }
         }
 
-        // Ocultar popup de Leaflet
+        // Ocultar popup de Leaflet y cerrar la tarjeta Bottom Sheet de detalles del tramo
         map.closePopup();
+        closeRoadDetail();
 
         // Cerrar sidebar en móvil
         if (window.innerWidth <= 768) {
             const sidebar = document.getElementById('sidebar');
             if (sidebar) sidebar.classList.remove('active');
+        }
+
+        // Centrar la cámara en el GPS o en el punto de inicio del tramo de forma inmediata
+        if (state.userLocation) {
+            map.setView(state.userLocation, 17);
+        } else if (tramo.coordinates && tramo.coordinates.length > 0) {
+            map.setView(tramo.coordinates[0], 17);
         }
 
         // Inicializar estado del trabajo activo
