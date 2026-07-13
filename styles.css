@@ -1502,12 +1502,15 @@ body, html {
 }
 
 .spin-icon {
-    animation: spin 3s linear infinite;
+    animation: pulse-soft 2s ease-in-out infinite;
 }
 
-@keyframes spin {
-    100% {
-        transform: rotate(360deg);
+@keyframes pulse-soft {
+    0%, 100% {
+        opacity: 0.65;
+    }
+    50% {
+        opacity: 1.0;
     }
 }
 

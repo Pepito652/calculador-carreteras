@@ -62,7 +62,9 @@ let state = {
         maxFraction: 0,
         startTime: null
     },
-    customColors: {}    // Colores de la leyenda personalizados por el usuario
+    customColors: {},   // Colores de la leyenda personalizados por el usuario
+    isSplitMode: false, // Indica si está activo el modo de división/corte de tramos
+    splitTramoId: null  // ID del tramo que se está dividiendo actualmente
 };
 
 // --- PALETA DE COLORES SEMANALES ---
@@ -1051,17 +1053,37 @@ function renderTramosOnMap() {
             interactive: true
         });
 
-        // Evento Click en la zona invisible táctil
+        // Evento Click en la zona invisible táctil delegado a la controladora global
         clickTarget.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
-            openRoadDetail(tramo.id);
+            handleTramoClick(tramo, e.latlng);
         });
 
-        // Guardar referencia en el objeto del tramo para poder cambiar estilos rápido
+        // Guardar referencia en el objeto del tramo para poder cambiar estilos rápido y capturar clicks
         tramo.mapLayer = polyline;
+        tramo.clickTarget = clickTarget;
         tramosLayerGroup.addLayer(polyline);
         tramosLayerGroup.addLayer(clickTarget);
     });
+}
+
+// Variable global para almacenar la función de limpieza del modo de división activo
+let activeSplitCleanup = null;
+
+// Manejador centralizado de clics sobre las carreteras para discernir entre la selección normal y la división
+function handleTramoClick(tramo, latlng) {
+    if (state.isSplitMode) {
+        if (state.splitTramoId === tramo.id) {
+            splitTramoAtPoint(tramo, latlng);
+            if (typeof activeSplitCleanup === 'function') {
+                activeSplitCleanup();
+            }
+        } else {
+            appAlert("Por favor, haz clic sobre el tramo seleccionado (naranja y discontinuo) para dividirlo, o pulsa Cancelar.", "warning");
+        }
+    } else {
+        openRoadDetail(tramo.id);
+    }
 }
 
 function fitMapToBounds() {
@@ -2376,6 +2398,10 @@ function startSplitTramoMode(tramoId) {
             return;
         }
 
+        // Activar el estado global de división
+        state.isSplitMode = true;
+        state.splitTramoId = id;
+
         // Guardar el estilo original antes de modificarlo para poder restaurarlo si cancela
         originalStyle = {
             color: polyline.options.color,
@@ -2392,35 +2418,38 @@ function startSplitTramoMode(tramoId) {
             dashArray: '5, 10'
         });
 
-        // Cambiar cursor a cruz (crosshair) al pasar sobre la línea
+        // Cambiar cursor a cruz (crosshair) al pasar sobre la línea y sobre su zona táctil invisible
         if (polyline.getElement()) {
             polyline.getElement().style.cursor = 'crosshair';
         }
-
-        // Evento de división al hacer clic sobre la línea
-        const onPolylineClick = (e) => {
-            L.DomEvent.stopPropagation(e);
-            splitTramoAtPoint(tramo, e.latlng);
-            cleanupSplitMode();
-        };
-
-        polyline.on('click', onPolylineClick);
+        const clickTarget = tramo.clickTarget;
+        if (clickTarget && clickTarget.getElement()) {
+            clickTarget.getElement().style.cursor = 'crosshair';
+        }
 
         // Cancelar el modo
         const cleanupSplitMode = () => {
+            state.isSplitMode = false;
+            state.splitTramoId = null;
+            activeSplitCleanup = null;
+
             if (splitBanner) {
                 splitBanner.remove();
             }
             if (polyline) {
-                polyline.off('click', onPolylineClick);
                 polyline.setStyle(originalStyle);
                 if (polyline.getElement()) {
                     polyline.getElement().style.cursor = '';
                 }
             }
+            if (clickTarget && clickTarget.getElement()) {
+                clickTarget.getElement().style.cursor = '';
+            }
             highlightedLayer = null;
             document.removeEventListener('keydown', onEscKey);
         };
+
+        activeSplitCleanup = cleanupSplitMode;
 
         const onEscKey = (e) => {
             if (e.key === 'Escape') {
@@ -2634,10 +2663,61 @@ function releaseWakeLock() {
     }
 }
 
-// Reactivar Wake Lock si el usuario cambia de app y regresa
+// Iniciar geolocalización web mediante watchPosition
+function startWebGpsWatch() {
+    if (!navigator.geolocation) {
+        appAlert("Tu navegador no soporta geolocalización.", "error");
+        if (state.gpsActive) toggleGPS();
+        return;
+    }
+    
+    if (webGpsWatchId !== null) {
+        navigator.geolocation.clearWatch(webGpsWatchId);
+    }
+    
+    webGpsWatchId = navigator.geolocation.watchPosition(
+        (position) => {
+            const latlng = L.latLng(position.coords.latitude, position.coords.longitude);
+            onLocationFound({
+                latlng: latlng,
+                accuracy: position.coords.accuracy,
+                heading: position.coords.heading,
+                speed: position.coords.speed
+            });
+        },
+        (error) => {
+            onLocationError({ message: error.message });
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0 // Forzar lectura directa sin caché
+        }
+    );
+}
+
+// Reactivar/pausar Wake Lock y GPS si el usuario cambia de app y regresa para ahorrar batería y no calentarse
 document.addEventListener('visibilitychange', async () => {
-    if (state.gpsActive && document.visibilityState === 'visible') {
-        await requestWakeLock();
+    if (document.visibilityState === 'visible') {
+        if (state.gpsActive) {
+            await requestWakeLock();
+            if (!window.ReactNativeWebView && webGpsWatchId === null) {
+                logDebug('Aplicación en primer plano: reactivando señal GPS automáticamente.');
+                const btn = document.getElementById('gpsToggle');
+                if (btn) btn.classList.add('searching');
+                startWebGpsWatch();
+            }
+        }
+    } else {
+        // En segundo plano
+        if (state.gpsActive) {
+            releaseWakeLock();
+            if (!window.ReactNativeWebView && webGpsWatchId !== null) {
+                navigator.geolocation.clearWatch(webGpsWatchId);
+                webGpsWatchId = null;
+                logDebug('Aplicación en segundo plano: GPS suspendido temporalmente para ahorrar batería.');
+            }
+        }
     }
 });
 
@@ -2674,30 +2754,7 @@ function toggleGPS() {
 
         // Solo activar geolocalización del navegador si NO estamos dentro de la app nativa WebView
         if (!window.ReactNativeWebView) {
-            if (navigator.geolocation) {
-                webGpsWatchId = navigator.geolocation.watchPosition(
-                    (position) => {
-                        const latlng = L.latLng(position.coords.latitude, position.coords.longitude);
-                        onLocationFound({
-                            latlng: latlng,
-                            accuracy: position.coords.accuracy,
-                            heading: position.coords.heading,
-                            speed: position.coords.speed
-                        });
-                    },
-                    (error) => {
-                        onLocationError({ message: error.message });
-                    },
-                    {
-                        enableHighAccuracy: true,
-                        timeout: 15000,
-                        maximumAge: 0 // Forzar lectura directa sin caché antigua
-                    }
-                );
-            } else {
-                appAlert("Tu navegador no soporta geolocalización.", "error");
-                toggleGPS();
-            }
+            startWebGpsWatch();
         }
     }
     if (window.ReactNativeWebView) {
@@ -2811,9 +2868,19 @@ function onLocationFound(e) {
 
 function onLocationError(e) {
     console.error('Error de GPS:', e.message);
-    logDebug('Error de GPS: ' + e.message, 'error');
-    appAlert('No se pudo acceder a la geolocalización. Si has denegado el permiso, pulsa en el candado de la barra de direcciones de tu navegador y cámbialo a "Permitir".', 'error');
-    toggleGPS(); // Desactivar
+    logDebug('Error de GPS: ' + e.message, 'warning');
+    
+    // Si la app está en segundo plano, no molestamos al usuario ni desactivamos el GPS
+    if (document.visibilityState === 'hidden') {
+        return;
+    }
+    
+    // En lugar de apagar el GPS al primer error (ej. pérdida de cobertura momentánea),
+    // simplemente mostramos el indicador de búsqueda en el botón flotante para reconectar.
+    const btn = document.getElementById('gpsToggle');
+    if (btn) {
+        btn.classList.add('searching');
+    }
 }
 
 // Mostrar u ocultar la tarjeta tutorial para activar Ubicación Precisa en Chrome
@@ -3281,20 +3348,33 @@ async function clearAllData() {
 // --- GEOMETRÍA Y MODO TRABAJO ACTIVO ---
 
 // Proyectar un punto GPS sobre una polilínea
-function projectLatLngToPolyline(lat, lng, coordinates) {
+function projectLatLngToPolyline(lat, lng, coordinates, tramo = null) {
     let minD = Infinity;
     let closestPoint = null;
     let bestTraversed = 0;
     let totalLength = 0;
-    
-    // Calcular longitud acumulada de segmentos
-    const accumLengths = [0];
-    for (let i = 0; i < coordinates.length - 1; i++) {
-        const p1 = L.latLng(coordinates[i][0], coordinates[i][1]);
-        const p2 = L.latLng(coordinates[i+1][0], coordinates[i+1][1]);
-        const d = p1.distanceTo(p2);
-        totalLength += d;
-        accumLengths.push(totalLength);
+    let accumLengths = null;
+
+    if (tramo) {
+        if (tramo.totalLength !== undefined && tramo.accumLengths) {
+            totalLength = tramo.totalLength;
+            accumLengths = tramo.accumLengths;
+        }
+    }
+
+    if (!accumLengths) {
+        accumLengths = [0];
+        for (let i = 0; i < coordinates.length - 1; i++) {
+            const p1 = L.latLng(coordinates[i][0], coordinates[i][1]);
+            const p2 = L.latLng(coordinates[i+1][0], coordinates[i+1][1]);
+            const d = p1.distanceTo(p2);
+            totalLength += d;
+            accumLengths.push(totalLength);
+        }
+        if (tramo) {
+            tramo.totalLength = totalLength;
+            tramo.accumLengths = accumLengths;
+        }
     }
     
     const p = L.latLng(lat, lng);
@@ -3377,7 +3457,7 @@ async function startActiveWorkMode(tramoId, skipDistanceCheck = false) {
 
             // Si finalmente tenemos ubicación, verificar la distancia
             if (loc) {
-                const proj = projectLatLngToPolyline(loc.lat, loc.lng, tramo.coordinates);
+                const proj = projectLatLngToPolyline(loc.lat, loc.lng, tramo.coordinates, tramo);
                 if (proj.distance > 50) {
                     const startPt = tramo.coordinates[0];
                     const action = await appGpsDistanceDialog(proj.distance, startPt);
@@ -3553,7 +3633,7 @@ function updateActiveWorkProgress(latlng, gpsSpeed) {
         const tramo = state.tramos.find(t => t.id === state.activeWork.tramoId);
         if (!tramo) return;
 
-        const proj = projectLatLngToPolyline(latlng.lat, latlng.lng, tramo.coordinates);
+        const proj = projectLatLngToPolyline(latlng.lat, latlng.lng, tramo.coordinates, tramo);
 
         // Si el tractor está a más de 35 metros de la carretera, ignorar o avisar (podría estar fuera del tramo)
         if (proj.distance > 35) {
@@ -3618,9 +3698,28 @@ function updateActiveWorkProgress(latlng, gpsSpeed) {
     }
 }
 
-// Variables para control de sugerencias
+// Calcular límites de coordenadas de un tramo para descarte rápido por Bounding Box
+function calculateTramoBounds(tramo) {
+    if (tramo.bounds) return;
+    let minLat = Infinity, maxLat = -Infinity;
+    let minLng = Infinity, maxLng = -Infinity;
+    for (let i = 0; i < tramo.coordinates.length; i++) {
+        const coord = tramo.coordinates[i];
+        const lat = coord[0];
+        const lng = coord[1];
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+    }
+    tramo.bounds = { minLat, maxLat, minLng, maxLng };
+}
+
+// Variables para control de sugerencias y throttling de CPU
 let dismissedSuggestionTramoId = null;
 let dismissedSuggestionTime = 0;
+let lastSuggestionCheckTime = 0;
+let lastSuggestionCheckLatLng = null;
 
 // Buscar tramos pendientes cercanos para sugerir su inicio
 function suggestNearbyTramo(latlng) {
@@ -3629,16 +3728,40 @@ function suggestNearbyTramo(latlng) {
         if (state.activeWork.tramoId || state.tramos.length === 0) return;
         if (dismissedSuggestionTramoId && (Date.now() - dismissedSuggestionTime) < 60000) return; // 1 minuto de cooldown
 
+        // Throttling: ejecutar máximo cada 3 segundos y si el usuario se ha desplazado más de 5 metros
+        const now = Date.now();
+        if (lastSuggestionCheckLatLng && (now - lastSuggestionCheckTime) < 3000) {
+            const dist = lastSuggestionCheckLatLng.distanceTo(latlng);
+            if (dist < 5) return; // Omitir si se movió muy poco en ese lapso
+        }
+        
+        lastSuggestionCheckTime = now;
+        lastSuggestionCheckLatLng = latlng;
+
         let closestTramo = null;
         let minD = Infinity;
+
+        const lat = latlng.lat;
+        const lng = latlng.lng;
+        // Margen de bounding box: ~0.002 grados (unos 220 metros de margen)
+        const margin = 0.002;
 
         // Buscar el tramo pendiente o parcial más cercano
         state.tramos.forEach(t => {
             if (t.status !== 'completed') {
-                const proj = projectLatLngToPolyline(latlng.lat, latlng.lng, t.coordinates);
-                if (proj.distance < minD) {
-                    minD = proj.distance;
-                    closestTramo = t;
+                if (!t.bounds) {
+                    calculateTramoBounds(t);
+                }
+
+                // Filtro rápido de Bounding Box (descarte en nanosegundos)
+                if (lat >= t.bounds.minLat - margin && lat <= t.bounds.maxLat + margin &&
+                    lng >= t.bounds.minLng - margin && lng <= t.bounds.maxLng + margin) {
+                    
+                    const proj = projectLatLngToPolyline(lat, lng, t.coordinates, t);
+                    if (proj.distance < minD) {
+                        minD = proj.distance;
+                        closestTramo = t;
+                    }
                 }
             }
         });
