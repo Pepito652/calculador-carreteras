@@ -486,6 +486,16 @@ function initEventListeners() {
                     }
                 }
             }, { passive: true });
+
+            // Evitar que el deslizamiento del panel de estadísticas superior (carrusel) burbujee al sidebar y lo cierre
+            const statsPanel = sidebar.querySelector('.stats-panel');
+            if (statsPanel) {
+                ['touchstart', 'touchmove', 'touchend'].forEach(eventName => {
+                    statsPanel.addEventListener(eventName, (e) => {
+                        e.stopPropagation();
+                    }, { passive: true });
+                });
+            }
         }
 
         // Botón GPS
