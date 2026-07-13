@@ -11,7 +11,7 @@
     <!-- Leaflet CSS Local -->
     <link rel="stylesheet" href="libs/leaflet.css">
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="styles.css?v=47.0">
+    <link rel="stylesheet" href="styles.css?v=48.0">
     <!-- PWA Manifest & Meta Tags -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#09090b">
@@ -184,27 +184,6 @@
         <!-- Map Area -->
         <main class="map-container" id="map"></main>
 
-        <!-- Context Panel / Selected Road Popup -->
-        <div class="road-detail-overlay" id="roadDetailOverlay">
-            <div class="road-detail-card">
-                <button class="close-overlay-btn" id="closeOverlay" onclick="closeRoadDetail()">×</button>
-                <div class="road-detail-content">
-                    <h2 id="detailRoadName">Nombre de la Carretera</h2>
-                    <div class="detail-meta">
-                        <span class="detail-badge" id="detailRoadLength">0.0 km</span>
-                        <span class="status-badge" id="detailRoadStatus">Pendiente</span>
-                    </div>
-                    <div class="detail-date-picker" id="detailDatePickerContainer">
-                        <label for="detailDate">Fecha de finalización:</label>
-                        <input type="date" id="detailDate">
-                    </div>
-                    <div class="detail-actions" style="display: flex; gap: 8px;">
-                        <button class="btn btn-success" style="flex: 2;" id="btnToggleComplete" onclick="toggleTramoCompletion()">Marcar como Completada</button>
-                        <button class="btn btn-warning" style="flex: 1; font-size: 0.85rem; padding: 0.5rem;" id="btnSplitTramo" onclick="startSplitTramoMode()">✂️ Dividir</button>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         <!-- Active Work Mode Banner -->
         <div id="activeWorkBanner" class="active-work-banner" style="display: none;">
@@ -252,6 +231,9 @@
         </div>
 
     </div>
+
+    <!-- Context Panel / Selected Road Popup (Fijo en la raíz del body para evitar conflictos flexbox) -->
+    <div class="road-detail-overlay" id="roadDetailOverlay"></div>
     <!-- PWA Installation Banner -->
     <div id="pwaInstallBanner" class="pwa-install-banner" style="display: none;">
         <div class="pwa-banner-content">
@@ -275,7 +257,7 @@
     <!-- Lucide Icons Local -->
     <script src="libs/lucide.min.js"></script>
     <!-- Custom APP JS -->
-    <script src="app.js?v=47.0"></script>
+    <script src="app.js?v=48.0"></script>
     <!-- Grabación de Notas de Voz para Feedback (Desacoplado) -->
     <script src="feedback-recorder.js"></script>
 
