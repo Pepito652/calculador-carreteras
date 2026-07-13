@@ -458,6 +458,36 @@ function initEventListeners() {
             }
         });
 
+        // Soporte para cerrar el menú lateral deslizándolo hacia la izquierda (gesto táctil)
+        if (sidebar) {
+            let touchStartX = 0;
+            let touchStartY = 0;
+            let touchEndX = 0;
+            let touchEndY = 0;
+
+            sidebar.addEventListener('touchstart', (e) => {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+            }, { passive: true });
+
+            sidebar.addEventListener('touchmove', (e) => {
+                touchEndX = e.touches[0].clientX;
+                touchEndY = e.touches[0].clientY;
+            }, { passive: true });
+
+            sidebar.addEventListener('touchend', () => {
+                const diffX = touchStartX - touchEndX;
+                const diffY = Math.abs(touchStartY - touchEndY);
+                
+                // El gesto debe ser predominantemente horizontal y superar un umbral de 50px
+                if (diffX > 50 && diffX > diffY) {
+                    if (sidebar.classList.contains('active') && window.innerWidth <= 768) {
+                        sidebar.classList.remove('active');
+                    }
+                }
+            }, { passive: true });
+        }
+
         // Botón GPS
         const gpsToggle = document.getElementById('gpsToggle');
         gpsToggle.addEventListener('click', toggleGPS);
