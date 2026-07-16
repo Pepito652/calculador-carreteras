@@ -3596,6 +3596,7 @@ function projectLatLngToPolyline(lat, lng, coordinates, tramo = null) {
         latLngs = coordinates.map(c => L.latLng(c[0], c[1]));
     }
     
+    const perfStart = performance.now();
     const p = L.latLng(lat, lng);
     let bestIdx = -1;
     let bestProjPoint = null;
@@ -3626,6 +3627,12 @@ function projectLatLngToPolyline(lat, lng, coordinates, tramo = null) {
         const realOffset = a.distanceTo(bestProjPoint);
         bestTraversed = accumLengths[bestIdx] + realOffset;
         closestPoint = bestProjPoint;
+    }
+    
+    const perfElapsed = performance.now() - perfStart;
+    const perfCpuEl = document.getElementById('perfCpuTime');
+    if (perfCpuEl) {
+        perfCpuEl.innerText = `${perfElapsed.toFixed(3)} ms`;
     }
     
     return {
@@ -4313,4 +4320,53 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1500); // Dar un poco de margen tras cargar la app
     }
 });
+
+// Monitor de Rendimiento Temporal para Pruebas
+function initPerformanceMonitor() {
+    const batteryEl = document.getElementById('perfBattery');
+    const ramEl = document.getElementById('perfRam');
+    const statusGpsEl = document.getElementById('perfStatusGps');
+
+    if (!batteryEl) return;
+
+    // Actualizar estado del GPS en el monitor
+    setInterval(() => {
+        if (statusGpsEl) {
+            statusGpsEl.innerText = state.gpsActive ? 'GPS: ACTIVO' : 'GPS: Inactivo';
+            statusGpsEl.style.color = state.gpsActive ? '#10b981' : '#a1a1aa';
+        }
+    }, 1000);
+
+    // Batería
+    if (navigator.getBattery) {
+        navigator.getBattery().then(battery => {
+            function updateBatteryInfo() {
+                const level = Math.round(battery.level * 100);
+                const charging = battery.charging ? '⚡ Cargando' : '🔋 Descargando';
+                batteryEl.innerText = `${level}% (${charging})`;
+                batteryEl.style.color = battery.charging ? '#10b981' : (level > 20 ? '#fff' : '#ef4444');
+            }
+            updateBatteryInfo();
+            battery.addEventListener('levelchange', updateBatteryInfo);
+            battery.addEventListener('chargingchange', updateBatteryInfo);
+        }).catch(err => {
+            batteryEl.innerText = 'Error API';
+        });
+    } else {
+        batteryEl.innerText = 'No soportado (iOS)';
+    }
+
+    // RAM (Solo Chromium)
+    setInterval(() => {
+        if (window.performance && window.performance.memory && ramEl) {
+            const usedMem = (window.performance.memory.usedJSHeapSize / (1024 * 1024)).toFixed(1);
+            ramEl.innerText = `${usedMem} MB`;
+        } else if (ramEl) {
+            ramEl.innerText = 'No soportado';
+        }
+    }, 2500);
+}
+
+// Iniciar el monitor
+document.addEventListener('DOMContentLoaded', initPerformanceMonitor);
 
