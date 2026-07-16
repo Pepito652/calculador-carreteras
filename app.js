@@ -3584,22 +3584,48 @@ function projectLatLngToPolyline(lat, lng, coordinates, tramo = null) {
             tramo.accumLengths = accumLengths;
         }
     }
+
+    // Cachear objetos L.latLng de la polilínea del tramo para evitar recrearlos en bucle
+    let latLngs = null;
+    if (tramo) {
+        if (!tramo.latLngsCache) {
+            tramo.latLngsCache = coordinates.map(c => L.latLng(c[0], c[1]));
+        }
+        latLngs = tramo.latLngsCache;
+    } else {
+        latLngs = coordinates.map(c => L.latLng(c[0], c[1]));
+    }
     
     const p = L.latLng(lat, lng);
+    let bestIdx = -1;
+    let bestProjPoint = null;
+    let minApproxDistSq = Infinity;
     
-    for (let i = 0; i < coordinates.length - 1; i++) {
-        const a = L.latLng(coordinates[i][0], coordinates[i][1]);
-        const b = L.latLng(coordinates[i+1][0], coordinates[i+1][1]);
+    // Bucle ultrarrápido con matemáticas 2D Euclidianas cartesianas aproximadas en grados (sin trigonométricas)
+    for (let i = 0; i < latLngs.length - 1; i++) {
+        const a = latLngs[i];
+        const b = latLngs[i+1];
         
-        // Encontrar punto más cercano en el segmento A-B
-        const proj = getClosestPointOnSegment(p, a, b);
-        const dist = p.distanceTo(proj.point);
+        const proj = getClosestPointOnSegmentCartesian(p, a, b);
         
-        if (dist < minD) {
-            minD = dist;
-            closestPoint = proj.point;
-            bestTraversed = accumLengths[i] + proj.offset;
+        const dLat = p.lat - proj.point.lat;
+        const dLng = p.lng - proj.point.lng;
+        const approxDistSq = dLat * dLat + dLng * dLng;
+        
+        if (approxDistSq < minApproxDistSq) {
+            minApproxDistSq = approxDistSq;
+            bestIdx = i;
+            bestProjPoint = proj.point;
         }
+    }
+    
+    // Solo para el segmento ganador calculamos la distancia real esférica (Haversine) en metros
+    if (bestIdx !== -1) {
+        minD = p.distanceTo(bestProjPoint);
+        const a = latLngs[bestIdx];
+        const realOffset = a.distanceTo(bestProjPoint);
+        bestTraversed = accumLengths[bestIdx] + realOffset;
+        closestPoint = bestProjPoint;
     }
     
     return {
@@ -3611,15 +3637,14 @@ function projectLatLngToPolyline(lat, lng, coordinates, tramo = null) {
     };
 }
 
-// Auxiliar: Encontrar el punto más cercano en un segmento
-function getClosestPointOnSegment(p, a, b) {
+// Auxiliar optimizado: Proyectar cartesianamente en un plano 2D aproximado (grados lat/lng)
+function getClosestPointOnSegmentCartesian(p, a, b) {
     const ab = [b.lat - a.lat, b.lng - a.lng];
     const ap = [p.lat - a.lat, p.lng - a.lng];
     const abLenSq = ab[0] * ab[0] + ab[1] * ab[1];
     
-    if (abLenSq === 0) return { point: a, offset: 0 };
+    if (abLenSq === 0) return { point: a, t: 0 };
     
-    // Proyección escalar c = (ap . ab) / |ab|^2
     let t = (ap[0] * ab[0] + ap[1] * ab[1]) / abLenSq;
     t = Math.max(0, Math.min(1, t)); // Limitar al segmento
     
@@ -3628,10 +3653,7 @@ function getClosestPointOnSegment(p, a, b) {
         a.lng + t * ab[1]
     );
     
-    // Calcular distancia de la proyección al punto de inicio A
-    const offset = a.distanceTo(projPoint);
-    
-    return { point: projPoint, offset: offset };
+    return { point: projPoint, t: t };
 }
 
 // Iniciar el modo de trabajo activo para un tramo
