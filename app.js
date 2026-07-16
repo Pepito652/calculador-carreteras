@@ -512,17 +512,33 @@ function initEventListeners() {
 
         // Mostrar/Ocultar Consola de Diagnóstico al hacer clic en el LED indicador
         const warningDot = document.getElementById('debugWarningDot');
+        const debugContent = document.getElementById('appDebugContent');
+
         if (warningDot) {
-            warningDot.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const content = document.getElementById('appDebugContent');
-                if (content) {
-                    if (content.style.display === 'none') {
-                        content.style.display = 'block';
-                    } else {
-                        content.style.display = 'none';
+            // Detener clicks y eventos táctiles para evitar cierres accidentales del sidebar
+            ['click', 'touchstart', 'touchmove', 'touchend'].forEach(eventName => {
+                warningDot.addEventListener(eventName, (e) => {
+                    e.stopPropagation();
+                    if (eventName === 'click') {
+                        const content = document.getElementById('appDebugContent');
+                        if (content) {
+                            if (content.style.display === 'none') {
+                                content.style.display = 'block';
+                            } else {
+                                content.style.display = 'none';
+                            }
+                        }
                     }
-                }
+                }, { passive: eventName !== 'click' });
+            });
+        }
+
+        if (debugContent) {
+            // Evitar que interactuar con el contenido de diagnóstico cierre el menú
+            ['click', 'touchstart', 'touchmove', 'touchend'].forEach(eventName => {
+                debugContent.addEventListener(eventName, (e) => {
+                    e.stopPropagation();
+                }, { passive: true });
             });
         }
 
